@@ -1,132 +1,437 @@
+# HR Data Completion Dashboard — Streamlit Project
+
+## app.py
+
+```python
 import streamlit as st
 import pandas as pd
+import numpy as np
 import plotly.express as px
-import re
 
-st.set_page_config(page_title="مقارنة بيانات الموظفين", layout="wide")
+st.set_page_config(page_title="HR Dashboard", layout="wide")
 
-st.image("logo.png", width=250)
-st.title("مقارنة مرنة بين ملفي بيانات الموظفين")
+# =========================
+# REQUIRED FIELDS
+# =========================
 
-def normalize_name(name):
-    if pd.isnull(name):
-        return ""
-    name = str(name).strip()
-    name = name.replace("أ", "ا").replace("إ", "ا").replace("آ", "ا").replace("ة", "ه").replace("ى", "ي")
-    return name.lower()
+GENERAL_FIELDS = [
+    'اسم الجهة التابعة',
+    'الدائرة',
+    'اسم الدائرة بالانجليزية',
+    'الوحدة التنظيمية',
+    'الوحدة التنظيمية بالانجليزية',
+    'المسمى الوظيفي',
+    'المسمى الوظيفي بالانجليزية',
+    'الوظيفة',
+    'الدرجة الوظيفية',
+    'الدرجة الوظيفية بالانجليزية',
+    'نوع الوظيفة',
+    'الفئة الوظيفية',
+    'المجموعة الوظيفية الرئيسية',
+    'المجموعة الوظيفية الفرعية',
+    'الرقم الوظيفي',
+    'تاريخ التعيين',
+    'مدة الخدمة',
+    'نوع العقد',
+    'اسم الموظف',
+    'الاسم بالانجليزي',
+    'تاريخ الميلاد',
+    'العمر',
+    'مكان الميلاد',
+    'الجنسية',
+    'الجنس',
+    'الديانة',
+    'الحالة الاجتماعية',
+    'عدد الأبناء',
+    'البريد الالكتروني',
+    'رقم الهاتف',
+    'العنوان المنطقة',
+    'العنوان امارة',
+    'اسم المشرف',
+    'رقم المشرف',
+    'بريد المشرف',
+    'المستوى التعليمي',
+    'التخصص',
+    'المؤسسة التعليمية',
+    'تاريخ انتهاء الدراسة',
+    'درجة المؤهل',
+    'هل المؤهل متوافق للوظيفة',
+    'تاريخ التصديق',
+    'رقم التصديق',
+    'عدد سنوات الخبرة السابقة',
+    'رقم الهوية',
+    'تاريخ انتهاء الهوية',
+    'رقم الجواز',
+    'تاريخ اصدار الجواز',
+    'تاريخ انتهاء الجواز',
+    'مكان اصدار الجواز',
+    'الرقم الموحد',
+    'فئة التأمين الصحي',
+    'إعاقة',
+    'رقم المستند',
+    'رقم التحقق'
+]
 
-# رفع الملفات
-old_file = st.file_uploader(" ارفع ملف البيانات القديمة", type=["xlsx", "csv"])
-new_file = st.file_uploader(" ارفع ملف البيانات الجديدة", type=["xlsx", "csv"])
+EXPAT_FIELDS = [
+    'رقم الإقامة',
+    'تاريخ اصدار الإقامة',
+    'تاريخ انتهاء الإقامة',
+    'الكفيل'
+]
 
-if old_file and new_file:
-    old_df = pd.read_csv(old_file) if old_file.name.endswith(".csv") else pd.read_excel(old_file)
-    new_df = pd.read_csv(new_file) if new_file.name.endswith(".csv") else pd.read_excel(new_file)
+EMIRATI_FIELDS = [
+    'رقم خلاصة القيد',
+    'رقم البلدة',
+    'رقم الأسرة'
+]
 
-    st.success(" تم تحميل الملفين")
-
-    # التأكد من وجود عمود الاسم
-    name_col = None
-    for col in old_df.columns:
-        if "اسم" in col and "الموظف" in col:
-            name_col = col
-            break
-
-    if not name_col:
-        st.error(" لم يتم العثور على عمود اسم الموظف. يرجى التأكد من وجوده.")
-        st.stop()
-
-    # تنظيف الأسماء
-    old_df["normalized_name"] = old_df[name_col].apply(normalize_name)
-    new_df["normalized_name"] = new_df[name_col].apply(normalize_name)
-
-    shared_cols = list(set(old_df.columns).intersection(set(new_df.columns)))
-    shared_cols = [col for col in shared_cols if col != name_col and col != "normalized_name" and 'تاريخ التعيين' not in col]
+GCC_COUNTRIES = [
+    'إماراتية',
+    'السعودية',
+    'الكويتية',
+    'القطرية',
+    'البحرينية',
+    'العمانية'
+]
 
 
-    # دمج البيانات بناءً على الاسم المنظّف
-    merged = pd.merge(old_df, new_df, on="normalized_name", suffixes=('_old', '_new'), how='outer', indicator=True)
+# =========================
+# FUNCTIONS
+# =========================
 
-    differences = []
-    changed_names = set()
+def is_filled(value):
+    if pd.isna(value):
+        return False
 
-    for col in shared_cols:
-        col_old = col + "_old"
-        col_new = col + "_new"
-        if col_old in merged.columns and col_new in merged.columns:
-            both_mask = merged["_merge"] == "both"
-            compare = merged.loc[both_mask]
-            if col == "الوحدة التنظيمية":
-                compare[col_old] = compare[col_old].astype(str).str.strip()
-                compare[col_new] = compare[col_new].astype(str).str[3:].str.strip()
-            diff_mask = compare[col_old] != compare[col_new]
-            if diff_mask.any():
-                diff_rows = compare[diff_mask][[name_col + "_old", col_old, col_new]].copy()
-                diff_rows.rename(columns={
-                    name_col + "_old": "اسم الموظف",
-                    col_old: "القيمة القديمة",
-                    col_new: "القيمة الجديدة"
-                }, inplace=True)
-                diff_rows["اسم العمود"] = col
-                differences.append(diff_rows[["اسم الموظف", "اسم العمود", "القيمة القديمة", "القيمة الجديدة"]])
-                changed_names.update(diff_rows["اسم الموظف"].unique())
+    value = str(value).strip()
 
-    new_only = merged[merged["_merge"] == "right_only"]
-    old_only = merged[merged["_merge"] == "left_only"]
+    invalid_values = ['', 'nan', 'none', 'null', '-', 'n/a']
+
+    return value.lower() not in invalid_values
 
 
-    tab1, tab2, tab3, tab4 = st.tabs(["الاختلافات", "الموظفين المفقودون", "رسم بياني", "فلترة"])
+
+def get_required_fields(row):
+    required_fields = GENERAL_FIELDS.copy()
+
+    nationality = str(row['الجنسية']).strip()
+
+    # Emirati fields
+    if nationality == 'إماراتية':
+        required_fields.extend(EMIRATI_FIELDS)
+
+    # Expat fields
+    elif nationality not in GCC_COUNTRIES:
+        required_fields.extend(EXPAT_FIELDS)
+
+    return required_fields
+
+
+
+def calculate_completion(row):
+    required_fields = get_required_fields(row)
+
+    total_required = len(required_fields)
+
+    completed = 0
+
+    for field in required_fields:
+        if field in row.index:
+            if is_filled(row[field]):
+                completed += 1
+
+    percentage = (completed / total_required) * 100
+
+    return round(percentage, 2)
+
+
+
+def calculate_field_completion(df, field_name, condition=None):
+
+    temp_df = df.copy()
+
+    if condition is not None:
+        temp_df = temp_df[condition]
+
+    total = len(temp_df)
+
+    if total == 0:
+        return 0
+
+    completed = temp_df[field_name].apply(is_filled).sum()
+
+    return round((completed / total) * 100, 2)
+
+
+# =========================
+# UI
+# =========================
+
+st.title("📊 HR Data Quality Dashboard")
+
+uploaded_file = st.file_uploader(
+    "Upload Excel File",
+    type=['xlsx', 'xls']
+)
+
+if uploaded_file:
+
+    df = pd.read_excel(uploaded_file)
+
+    # =========================
+    # CLEAN COLUMN NAMES
+    # =========================
+
+    df.columns = df.columns.str.strip()
+
+    # =========================
+    # CALCULATE COMPLETION
+    # =========================
+
+    df['نسبة الاستكمال'] = df.apply(calculate_completion, axis=1)
+
+    # =========================
+    # TABS
+    # =========================
+
+    tab1, tab2, tab3 = st.tabs([
+        '📈 Dashboard',
+        '✅ Data Completion',
+        '🏢 Department Filter'
+    ])
+
+    # =========================================================
+    # TAB 1
+    # =========================================================
 
     with tab1:
-        if differences:
-            final_df = pd.concat(differences, ignore_index=True)
-            st.subheader(" اختلافات في البيانات:")
-            st.dataframe(final_df, use_container_width=True)
-            st.markdown(f"عدد الموظفين اللتي تغيرت بياناتهم: `{len(changed_names)}`")
 
-            csv_data = final_df.to_csv(index=False).encode("utf-8-sig")
-            st.download_button(" تحميل النتائج", data=csv_data, file_name="التغير.csv", mime="text/csv")
-        else:
-            st.success(" لا توجد اختلافات في البيانات.")
+        st.header("Dashboard")
+
+        total_employees = len(df)
+
+        male_count = len(df[df['الجنس'] == 'ذكر'])
+        female_count = len(df[df['الجنس'] == 'أنثى'])
+
+        avg_completion = round(df['نسبة الاستكمال'].mean(), 2)
+
+        top_department = df['الدائرة'].value_counts().idxmax()
+
+        col1, col2, col3, col4 = st.columns(4)
+
+        col1.metric("إجمالي الموظفين", total_employees)
+        col2.metric("متوسط الاستكمال", f"{avg_completion}%")
+        col3.metric("الذكور", male_count)
+        col4.metric("الإناث", female_count)
+
+        st.markdown('---')
+
+        st.subheader("أكثر دائرة فيها موظفين")
+
+        st.info(top_department)
+
+        # Gender Chart
+        gender_df = df['الجنس'].value_counts().reset_index()
+        gender_df.columns = ['الجنس', 'العدد']
+
+        fig_gender = px.pie(
+            gender_df,
+            names='الجنس',
+            values='العدد',
+            title='توزيع الجنس'
+        )
+
+        st.plotly_chart(fig_gender, use_container_width=True)
+
+        # Department Chart
+        dep_df = df['الدائرة'].value_counts().reset_index()
+        dep_df.columns = ['الدائرة', 'العدد']
+
+        fig_dep = px.bar(
+            dep_df,
+            x='الدائرة',
+            y='العدد',
+            title='عدد الموظفين حسب الدائرة'
+        )
+
+        st.plotly_chart(fig_dep, use_container_width=True)
+
+        # Nationality Chart
+        nat_df = df['الجنسية'].value_counts().reset_index()
+        nat_df.columns = ['الجنسية', 'العدد']
+
+        fig_nat = px.bar(
+            nat_df,
+            x='الجنسية',
+            y='العدد',
+            title='توزيع الجنسيات'
+        )
+
+        st.plotly_chart(fig_nat, use_container_width=True)
+
+    # =========================================================
+    # TAB 2
+    # =========================================================
 
     with tab2:
-        st.subheader(":الموظفون المفقودون في البيانات القديمة")
-        if not new_only.empty:
-            missing_rows = old_df[old_df["normalized_name"].isin(old_only["normalized_name"])]
-            st.dataframe(missing_rows, use_container_width=True)
 
-            missing_csv = missing_rows.to_csv(index=False).encode("utf-8-sig")
-            st.download_button(" تحميل ملف للموظفين المفقودين", data=missing_csv, file_name="الموظفين_المفقودين.csv", mime="text/csv")
-        else:
-            st.info("لا توجد سجلات مفقودة.")
+        st.header("Data Completion")
 
+        overall_completion = round(df['نسبة الاستكمال'].mean(), 2)
+
+        st.metric(
+            'نسبة الاستكمال العامة',
+            f'{overall_completion}%'
+        )
+
+        st.markdown('---')
+
+        field_results = []
+
+        # GENERAL FIELDS
+        for field in GENERAL_FIELDS:
+
+            if field in df.columns:
+
+                completion = calculate_field_completion(df, field)
+
+                field_results.append({
+                    'الحقل': field,
+                    'نسبة الاستكمال': completion
+                })
+
+        # EXPAT FIELDS
+        expat_condition = ~df['الجنسية'].isin(GCC_COUNTRIES)
+
+        for field in EXPAT_FIELDS:
+
+            if field in df.columns:
+
+                completion = calculate_field_completion(
+                    df,
+                    field,
+                    expat_condition
+                )
+
+                field_results.append({
+                    'الحقل': field,
+                    'نسبة الاستكمال': completion
+                })
+
+        # EMIRATI FIELDS
+        emirati_condition = df['الجنسية'] == 'الإمارات'
+
+        for field in EMIRATI_FIELDS:
+
+            if field in df.columns:
+
+                completion = calculate_field_completion(
+                    df,
+                    field,
+                    emirati_condition
+                )
+
+                field_results.append({
+                    'الحقل': field,
+                    'نسبة الاستكمال': completion
+                })
+
+        completion_df = pd.DataFrame(field_results)
+
+        st.dataframe(
+            completion_df,
+            use_container_width=True
+        )
+
+        st.markdown('---')
+
+        st.subheader('أقل الحقول استكمالاً')
+
+        lowest_fields = completion_df.sort_values(
+            by='نسبة الاستكمال'
+        ).head(10)
+
+        fig_low = px.bar(
+            lowest_fields,
+            x='الحقل',
+            y='نسبة الاستكمال',
+            title='الحقول الأقل استكمالاً'
+        )
+
+        st.plotly_chart(fig_low, use_container_width=True)
+
+    # =========================================================
+    # TAB 3
+    # =========================================================
 
     with tab3:
-        if differences:
-            chart_df = pd.concat(differences)["اسم العمود"].value_counts().reset_index()
-            chart_df.columns = ["العامود", "عدد التغييرات"]
-            fig = px.bar(chart_df, x="العامود", y="عدد التغييرات", color="العامود", color_discrete_sequence=px.colors.sequential.Blues)
-            st.subheader(" عدد التغييرات حسب العامود:")
-            st.plotly_chart(fig, use_container_width=True)
-        else:
-            st.info("لا توجد تغييرات في العامود لعرضها.")
 
-    with tab4:
-        st.subheader(" فلترة التغييرات حسب العمود والقيمة")
-        if differences:
-            final_df = pd.concat(differences, ignore_index=True)
-            selected_col = st.selectbox("اختاري العمود:", sorted(final_df["اسم العمود"].unique()))
-            filtered_values = final_df[final_df["اسم العمود"] == selected_col]["القيمة القديمة"].dropna().unique().tolist()
-            selected_value = st.selectbox("اختاري القيمة القديمة:", ["الكل"] + sorted(filtered_values))
+        st.header('Department Filter')
 
-            filtered_df = final_df[final_df["اسم العمود"] == selected_col]
-            if selected_value != "الكل":
-                filtered_df = filtered_df[filtered_df["القيمة القديمة"] == selected_value]
+        departments = sorted(df['الدائرة'].dropna().unique())
 
-            st.dataframe(filtered_df, use_container_width=True)
-            st.success(f"عدد الصفوف المطابقة: {len(filtered_df)}")
+        selected_department = st.selectbox(
+            'اختر الدائرة',
+            departments
+        )
 
-            csv_data_filt = filtered_df.to_csv(index=False).encode("utf-8-sig")
-            st.download_button(" تحميل النتائج", data=csv_data_filt, file_name="التغير_لعامود_معين.csv", mime="text/csv")
-        else:
-            st.info("لا توجد تغييرات لعرضها.")
+        filtered_df = df[
+            df['الدائرة'] == selected_department
+        ]
+
+        st.success(f'عدد الموظفين: {len(filtered_df)}')
+
+        department_completion = round(
+            filtered_df['نسبة الاستكمال'].mean(),
+            2
+        )
+
+        st.metric(
+            'نسبة الاستكمال للدائرة',
+            f'{department_completion}%'
+        )
+
+        st.markdown('---')
+
+        st.dataframe(filtered_df)
+
+        dep_field_results = []
+
+        # GENERAL FIELDS
+        for field in GENERAL_FIELDS:
+
+            if field in filtered_df.columns:
+
+                completion = calculate_field_completion(
+                    filtered_df,
+                    field
+                )
+
+                dep_field_results.append({
+                    'الحقل': field,
+                    'نسبة الاستكمال': completion
+                })
+
+        dep_completion_df = pd.DataFrame(dep_field_results)
+
+        st.subheader('نسبة استكمال الحقول')
+
+        st.dataframe(dep_completion_df)
+
+        fig_dep_completion = px.bar(
+            dep_completion_df.sort_values(
+                by='نسبة الاستكمال'
+            ).head(10),
+            x='الحقل',
+            y='نسبة الاستكمال',
+            title='أقل الحقول استكمالاً في الدائرة'
+        )
+
+        st.plotly_chart(
+            fig_dep_completion,
+            use_container_width=True
+        )
+
+else:
+
+    st.info('Please upload Excel file')
