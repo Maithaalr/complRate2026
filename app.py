@@ -203,7 +203,23 @@ if uploaded_file:
     # READ EXCEL
     # =====================================================
 
-    df = pd.read_excel(uploaded_file)
+    # =====================================================
+# READ EXCEL FILE
+# =====================================================
+
+excel_file = pd.ExcelFile(uploaded_file)
+
+sheet_names = excel_file.sheet_names
+
+selected_sheet = st.selectbox(
+    "اختر الشيت",
+    sheet_names
+)
+
+df = pd.read_excel(
+    excel_file,
+    sheet_name=selected_sheet
+)
 
     # =====================================================
     # CLEAN COLUMNS
