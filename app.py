@@ -3,7 +3,10 @@ import pandas as pd
 import numpy as np
 import plotly.express as px
 
-st.set_page_config(page_title="HR Dashboard", layout="wide")
+st.set_page_config(
+    page_title="HR Dashboard",
+    layout="wide"
+)
 
 # =====================================================
 # REQUIRED FIELDS
@@ -120,14 +123,12 @@ def get_required_fields(row):
         row.get('الجنسية', '')
     ).strip()
 
-    # Emirati fields
     if nationality == 'إماراتية':
 
         required_fields.extend(
             EMIRATI_FIELDS
         )
 
-    # Expat fields
     elif nationality not in GCC_COUNTRIES:
 
         required_fields.extend(
@@ -197,29 +198,29 @@ uploaded_file = st.file_uploader(
     type=['xlsx', 'xls']
 )
 
+# =====================================================
+# MAIN
+# =====================================================
+
 if uploaded_file:
 
     # =====================================================
-    # READ EXCEL
+    # READ EXCEL FILE
     # =====================================================
 
-    # =====================================================
-# READ EXCEL FILE
-# =====================================================
+    excel_file = pd.ExcelFile(uploaded_file)
 
-excel_file = pd.ExcelFile(uploaded_file)
+    sheet_names = excel_file.sheet_names
 
-sheet_names = excel_file.sheet_names
+    selected_sheet = st.selectbox(
+        "اختر الشيت",
+        sheet_names
+    )
 
-selected_sheet = st.selectbox(
-    "اختر الشيت",
-    sheet_names
-)
-
-df = pd.read_excel(
-    excel_file,
-    sheet_name=selected_sheet
-)
+    df = pd.read_excel(
+        excel_file,
+        sheet_name=selected_sheet
+    )
 
     # =====================================================
     # CLEAN COLUMNS
@@ -233,10 +234,6 @@ df = pd.read_excel(
         .str.replace('\r', '')
     )
 
-    # DEBUG
-    st.write("Columns in Excel:")
-    st.write(df.columns.tolist())
-
     # =====================================================
     # CHECK الجنسية COLUMN
     # =====================================================
@@ -246,6 +243,8 @@ df = pd.read_excel(
         st.error(
             "عمود الجنسية غير موجود في ملف الإكسل"
         )
+
+        st.write(df.columns.tolist())
 
         st.stop()
 
@@ -327,9 +326,7 @@ df = pd.read_excel(
 
         st.info(top_department)
 
-        # =========================
         # Gender Chart
-        # =========================
 
         gender_df = (
             df['الجنس']
@@ -354,9 +351,7 @@ df = pd.read_excel(
             use_container_width=True
         )
 
-        # =========================
         # Department Chart
-        # =========================
 
         dep_df = (
             df['الدائرة']
@@ -381,9 +376,7 @@ df = pd.read_excel(
             use_container_width=True
         )
 
-        # =========================
         # Nationality Chart
-        # =========================
 
         nat_df = (
             df['الجنسية']
@@ -432,9 +425,7 @@ df = pd.read_excel(
 
         field_results = []
 
-        # =========================
         # GENERAL FIELDS
-        # =========================
 
         for field in GENERAL_FIELDS:
 
@@ -452,9 +443,7 @@ df = pd.read_excel(
                     'نسبة الاستكمال': completion
                 })
 
-        # =========================
         # EXPAT FIELDS
-        # =========================
 
         expat_condition = ~df[
             'الجنسية'
@@ -477,9 +466,7 @@ df = pd.read_excel(
                     'نسبة الاستكمال': completion
                 })
 
-        # =========================
         # EMIRATI FIELDS
-        # =========================
 
         emirati_condition = (
             df['الجنسية']
