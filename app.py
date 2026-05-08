@@ -138,17 +138,11 @@ def get_required_fields(row):
     return required_fields
 
 
-def calculate_completion(row):
+# =====================================================
+# SPECIAL FIELD CHECKS
+# =====================================================
 
-    required_fields = get_required_fields(row)
-
-    total_required = len(required_fields)
-
-    completed = 0
-
-    # =========================================
-    # SPECIAL CONDITIONS
-    # =========================================
+def is_children_completed(row):
 
     marital_status = str(
         row.get('الحالة الاجتماعية', '')
@@ -158,6 +152,20 @@ def calculate_completion(row):
         'عدد الأبناء',
         np.nan
     )
+
+    # إذا القيمة موجودة
+    if is_filled(children_value):
+        return True
+
+    # أعزب والحقل فاضي = مكتمل
+    if marital_status == 'أعزب':
+        return True
+
+    # غير أعزب والحقل فاضي = يعتبر 0 ومكتمل
+    return True
+
+
+def is_education_institution_completed(row):
 
     education_level = str(
         row.get('المستوى التعليمي', '')
@@ -174,57 +182,57 @@ def calculate_completion(row):
         'بدون'
     ]
 
-    # =========================================
-    # CALCULATE COMPLETION
-    # =========================================
+    # إذا المؤسسة موجودة
+    if is_filled(educational_institution):
+        return True
+
+    # الحالات الخاصة
+    if education_level in special_education_levels:
+        return True
+
+    return False
+
+
+# =====================================================
+# EMPLOYEE COMPLETION
+# =====================================================
+
+def calculate_completion(row):
+
+    required_fields = get_required_fields(row)
+
+    total_required = len(required_fields)
+
+    completed = 0
 
     for field in required_fields:
 
         # =====================================
-        # CHILDREN CONDITION
+        # عدد الأبناء
         # =====================================
 
         if field == 'عدد الأبناء':
 
-            # أعزب + فارغ = مكتمل
-
-            if (
-                marital_status == 'أعزب'
-                and not is_filled(children_value)
-            ):
+            if is_children_completed(row):
 
                 completed += 1
-                continue
 
-            # غير أعزب + فارغ = يعتبر 0 ومكتمل
-
-            elif (
-                marital_status != 'أعزب'
-                and not is_filled(children_value)
-            ):
-
-                completed += 1
-                continue
+            continue
 
         # =====================================
-        # EDUCATIONAL INSTITUTION CONDITION
+        # المؤسسة التعليمية
         # =====================================
 
         if field == 'المؤسسة التعليمية':
 
-            if (
-                education_level
-                in special_education_levels
-                and not is_filled(
-                    educational_institution
-                )
-            ):
+            if is_education_institution_completed(row):
 
                 completed += 1
-                continue
+
+            continue
 
         # =====================================
-        # NORMAL CHECK
+        # الحساب الطبيعي
         # =====================================
 
         if field in row.index:
@@ -239,6 +247,10 @@ def calculate_completion(row):
 
     return round(percentage, 2)
 
+
+# =====================================================
+# FIELD COMPLETION
+# =====================================================
 
 def calculate_field_completion(
     df,
@@ -257,6 +269,42 @@ def calculate_field_completion(
     if total == 0:
         return 0
 
+    # =====================================
+    # عدد الأبناء
+    # =====================================
+
+    if field_name == 'عدد الأبناء':
+
+        completed = temp_df.apply(
+            is_children_completed,
+            axis=1
+        ).sum()
+
+        return round(
+            (completed / total) * 100,
+            2
+        )
+
+    # =====================================
+    # المؤسسة التعليمية
+    # =====================================
+
+    if field_name == 'المؤسسة التعليمية':
+
+        completed = temp_df.apply(
+            is_education_institution_completed,
+            axis=1
+        ).sum()
+
+        return round(
+            (completed / total) * 100,
+            2
+        )
+
+    # =====================================
+    # NORMAL CALCULATION
+    # =====================================
+
     completed = temp_df[field_name].apply(
         is_filled
     ).sum()
@@ -265,6 +313,7 @@ def calculate_field_completion(
         (completed / total) * 100,
         2
     )
+
 
 # =====================================================
 # UI
