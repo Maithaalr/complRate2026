@@ -139,7 +139,7 @@ def get_required_fields(row):
 
 
 # =====================================================
-# SPECIAL FIELD CHECKS
+# SPECIAL CONDITIONS
 # =====================================================
 
 def is_children_completed(row):
@@ -153,16 +153,29 @@ def is_children_completed(row):
         np.nan
     )
 
-    # إذا القيمة موجودة
+    # إذا الحقل معبأ
     if is_filled(children_value):
         return True
 
-    # أعزب والحقل فاضي = مكتمل
+    # إذا الحالة الاجتماعية غير موجودة
+    if not is_filled(marital_status):
+        return False
+
+    # أعزب + فارغ = مكتمل
     if marital_status == 'أعزب':
         return True
 
-    # غير أعزب والحقل فاضي = يعتبر 0 ومكتمل
-    return True
+    # باقي الحالات + فارغ = يعتبر 0 ومكتمل
+    if marital_status in [
+        'متزوج',
+        'مطلّق',
+        'مطلق',
+        'أرمل',
+        'أرملة'
+    ]:
+        return True
+
+    return False
 
 
 def is_education_institution_completed(row):
@@ -182,11 +195,11 @@ def is_education_institution_completed(row):
         'بدون'
     ]
 
-    # إذا المؤسسة موجودة
+    # المؤسسة التعليمية موجودة
     if is_filled(educational_institution):
         return True
 
-    # الحالات الخاصة
+    # حالات خاصة
     if education_level in special_education_levels:
         return True
 
@@ -225,14 +238,16 @@ def calculate_completion(row):
 
         if field == 'المؤسسة التعليمية':
 
-            if is_education_institution_completed(row):
+            if is_education_institution_completed(
+                row
+            ):
 
                 completed += 1
 
             continue
 
         # =====================================
-        # الحساب الطبيعي
+        # NORMAL CHECK
         # =====================================
 
         if field in row.index:
@@ -377,12 +392,77 @@ if uploaded_file:
         st.stop()
 
     # =====================================================
-    # CALCULATE COMPLETION
+    # CALCULATE EMPLOYEE COMPLETION
     # =====================================================
 
     df['نسبة الاستكمال'] = df.apply(
         calculate_completion,
         axis=1
+    )
+
+    # =====================================================
+    # OVERALL COMPLETION BASED ON FIELDS
+    # =====================================================
+
+    total_required_fields = 0
+    total_completed_fields = 0
+
+    for _, row in df.iterrows():
+
+        required_fields = get_required_fields(
+            row
+        )
+
+        total_required_fields += len(
+            required_fields
+        )
+
+        for field in required_fields:
+
+            # =====================================
+            # عدد الأبناء
+            # =====================================
+
+            if field == 'عدد الأبناء':
+
+                if is_children_completed(row):
+
+                    total_completed_fields += 1
+
+                continue
+
+            # =====================================
+            # المؤسسة التعليمية
+            # =====================================
+
+            if field == 'المؤسسة التعليمية':
+
+                if is_education_institution_completed(
+                    row
+                ):
+
+                    total_completed_fields += 1
+
+                continue
+
+            # =====================================
+            # NORMAL CHECK
+            # =====================================
+
+            if field in row.index:
+
+                if is_filled(row[field]):
+
+                    total_completed_fields += 1
+
+    overall_completion = round(
+
+        (
+            total_completed_fields
+            / total_required_fields
+        ) * 100,
+
+        2
     )
 
     # =====================================================
@@ -413,11 +493,6 @@ if uploaded_file:
             df[df['الجنس'] == 'أنثى']
         )
 
-        avg_completion = round(
-            df['نسبة الاستكمال'].mean(),
-            2
-        )
-
         top_department = (
             df['الدائرة']
             .value_counts()
@@ -433,7 +508,7 @@ if uploaded_file:
 
         col2.metric(
             "متوسط الاستكمال",
-            f"{avg_completion}%"
+            f"{overall_completion}%"
         )
 
         col3.metric(
@@ -537,11 +612,6 @@ if uploaded_file:
 
         st.header(
             "Data Completion"
-        )
-
-        overall_completion = round(
-            df['نسبة الاستكمال'].mean(),
-            2
         )
 
         st.metric(
