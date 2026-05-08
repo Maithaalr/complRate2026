@@ -146,7 +146,86 @@ def calculate_completion(row):
 
     completed = 0
 
+    # =========================================
+    # SPECIAL CONDITIONS
+    # =========================================
+
+    marital_status = str(
+        row.get('الحالة الاجتماعية', '')
+    ).strip()
+
+    children_value = row.get(
+        'عدد الأبناء',
+        np.nan
+    )
+
+    education_level = str(
+        row.get('المستوى التعليمي', '')
+    ).strip()
+
+    educational_institution = row.get(
+        'المؤسسة التعليمية',
+        np.nan
+    )
+
+    special_education_levels = [
+        'يجيد الكتابة والقراءة',
+        'يجيدالقراءة',
+        'بدون'
+    ]
+
+    # =========================================
+    # CALCULATE COMPLETION
+    # =========================================
+
     for field in required_fields:
+
+        # =====================================
+        # CHILDREN CONDITION
+        # =====================================
+
+        if field == 'عدد الأبناء':
+
+            # أعزب + فارغ = مكتمل
+
+            if (
+                marital_status == 'أعزب'
+                and not is_filled(children_value)
+            ):
+
+                completed += 1
+                continue
+
+            # غير أعزب + فارغ = يعتبر 0 ومكتمل
+
+            elif (
+                marital_status != 'أعزب'
+                and not is_filled(children_value)
+            ):
+
+                completed += 1
+                continue
+
+        # =====================================
+        # EDUCATIONAL INSTITUTION CONDITION
+        # =====================================
+
+        if field == 'المؤسسة التعليمية':
+
+            if (
+                education_level
+                in special_education_levels
+                and not is_filled(
+                    educational_institution
+                )
+            ):
+
+                completed += 1
+                continue
+
+        # =====================================
+        # NORMAL CHECK
+        # =====================================
 
         if field in row.index:
 
