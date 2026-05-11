@@ -351,8 +351,7 @@ if uploaded_file:
     # READ EXCEL FILE
     # =====================================================
 
-    excel_file = pd.ExcelFile(uploaded_file)
-
+    excel_file = pd.ExcelFile(uploaded_file, engine="openpyxl")
     sheet_names = excel_file.sheet_names
 
     selected_sheet = st.selectbox(
